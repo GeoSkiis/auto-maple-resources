@@ -6,35 +6,76 @@ import math
 from src.routine.components import Command
 from src.common.vkeys import press, key_down, key_up
 
+# Cooldowns for SkillRotation (key -> sec). 0 = no cooldown (spam).
+SKILL_COOLDOWNS = {
+    'ctrl': 0,         # Soul-Shatter Talisman (no cd)
+    'shift': 12,       # Spinning Strike 12 sec
+    'a': 30,           # Pulverizing Strike 30 sec
+    's': 30,           # Execute 30 sec
+    'd': 30,           # Shade Fletched Arrow 30 sec
+    'f': 30,           # Heart Wreck Talisman 30 sec
+    'q': 60,           # Summon Tengu 60 sec
+    'w': 60,           # Summon Oni 60 sec
+    't': 60,           # Barrier Curse Ward 60 sec
+    '4': 60,           # Erda Shower (shared) 60 sec
+    'home': 60,        # Call of Unit 60 sec
+    'e': 120,          # Summon Orochi 120 sec
+    'r': 120,          # Unleash Radiant Flame 120 sec
+    'v': 120,          # Unleash Black Winged Destruction 120 sec
+    'h': 120,          # Unleash Soul-Searing Venom 120 sec
+    '1': 120,          # Twilight Bloom 120 sec
+    '2': 120,          # Princess Sakuno's Blessing 120 sec
+    '3': 120,          # Hakumenkonmou Juubi 120 sec
+    'page up': 120,    # Spirit Chains 120 sec
+    'page down': 120,  # True Name Revolution 120 sec
+    'end': 120,        # Akatsuki Blessing 120 sec
+    '5': 250,          # True Arachnid Reflection (shared) 250 sec
+}
+
 
 # List of key mappings
 class Key:
-    # Movement
+    # Movement (teleport class: no double jump; use teleport to get around)
     JUMP = 'space'
-    TELEPORT = 'e'
-    CHARM = 'd'
+    TELEPORT = 'c'
+    ROPE_LIFT = 'x'
+    PICK_UP = 'z'
 
-    # Buffs
-    HAKU = 'f4'
-    AKATSUKI_WARRIOR = 'f3'
-    HOLY_SYMBOL = 'f2'
-    SPEED_INFUSION = 'f1'
+    # Decent skills (F1–F4), 3 min rotation
+    DECENT_SHARP_EYES = 'f1'
+    DECENT_HYPER_BODY = 'f2'
+    DECENT_COMBAT_ORDERS = 'f3'
+    DECENT_HOLY_SYMBOL = 'f4'
 
-    # Skills
-    SHIKIGAMI = 'r'
-    TENGU = 'q'
-    LUCID_SOUL = '1'
-    YAKSHA = '2'
-    VANQUISHER = 'f'
-    KISHIN = 'ctrl'
-    NINE_TAILS = '3'
-    ARACHNID = '4'
-    EXORCIST = 'w'
-    DOMAIN = 'z'
-    ONI_LEGION = '5'
-    BLOSSOM_BARRIER = 'g'
-    YUKIMUSUME = 'c'
-    MANA_BALANCE = 'shift'
+    # Shared skills (all classes)
+    ERDA_SHOWER = '4'              # 60 sec
+    TRUE_ARACHNID_REFLECTION = '5' # 250 sec
+
+    # 6th job skills
+    ORIGIN = '7'
+    ASCENT = '8'
+
+    # Kanna-specific: main attack and movement skills
+    SOUL_SHATTER_TALISMAN = 'ctrl'  # No cd – primary attack
+    SPINNING_STRIKE = 'shift'       # 12 sec
+    SUMMON_TENGU = 'q'              # 60 sec
+    SUMMON_ONI = 'w'                # 60 sec
+    SUMMON_OROCHI = 'e'             # 120 sec
+    UNLEASH_RADIANT_FLAME = 'r'     # 120 sec
+    BARRIER_CURSE_WARD = 't'        # 60 sec
+    PULVERIZING_STRIKE = 'a'        # 30 sec
+    EXECUTE = 's'                   # 30 sec
+    SHADE_FLETCHED_ARROW = 'd'      # 30 sec
+    HEART_WRECK_TALISMAN = 'f'      # 30 sec
+    UNLEASH_BLACK_WINGED_DESTRUCTION = 'v'  # 120 sec
+    UNLEASH_SOUL_SEARING_VENOM = 'h'        # 120 sec
+    TWILIGHT_BLOOM = '1'            # 120 sec
+    PRINCESS_SAKUNO_BLESSING = '2'  # 120 sec
+    HAKUMENKONMOU_JUUBI = '3'       # 120 sec
+    CALL_OF_UNIT = 'home'           # 60 sec
+    SPIRIT_CHAINS = 'page up'       # 120 sec
+    TRUE_NAME_REVOLUTION = 'page down'  # 120 sec
+    AKATSUKI_BLESSING = 'end'       # 120 sec
 
 
 #########################
@@ -43,12 +84,14 @@ class Key:
 def step(direction, target):
     """
     Performs one movement step in the given DIRECTION towards TARGET.
-    Should not press any arrow keys, as those are handled by Auto Maple.
+    Teleport class: no double jump; use Rope Lift for up, Teleport (C) for movement.
+    Optional jump for vertical, then teleport. Direction is held by Move.
     """
-
     num_presses = 2
     if direction == 'up' or direction == 'down':
         num_presses = 1
+    if direction == 'up':
+        press(Key.ROPE_LIFT, 1)
     if config.stage_fright and direction != 'up' and utils.bernoulli(0.75):
         time.sleep(utils.rand_float(0.1, 0.3))
     d_y = target[1] - config.player_pos[1]
@@ -72,22 +115,23 @@ class Adjust(Command):
         counter = self.max_steps
         toggle = True
         error = utils.distance(config.player_pos, self.target)
+        xy_threshold = settings.adjust_tolerance / math.sqrt(2)
+        y_threshold = settings.adjust_tolerance
         while config.enabled and counter > 0 and error > settings.adjust_tolerance:
             if toggle:
                 d_x = self.target[0] - config.player_pos[0]
-                threshold = settings.adjust_tolerance / math.sqrt(2)
-                if abs(d_x) > threshold:
+                if abs(d_x) > xy_threshold:
                     walk_counter = 0
                     if d_x < 0:
                         key_down('left')
-                        while config.enabled and d_x < -1 * threshold and walk_counter < 60:
+                        while config.enabled and d_x < -1 * xy_threshold and walk_counter < 60:
                             time.sleep(0.05)
                             walk_counter += 1
                             d_x = self.target[0] - config.player_pos[0]
                         key_up('left')
                     else:
                         key_down('right')
-                        while config.enabled and d_x > threshold and walk_counter < 60:
+                        while config.enabled and d_x > xy_threshold and walk_counter < 60:
                             time.sleep(0.05)
                             walk_counter += 1
                             d_x = self.target[0] - config.player_pos[0]
@@ -95,7 +139,7 @@ class Adjust(Command):
                     counter -= 1
             else:
                 d_y = self.target[1] - config.player_pos[1]
-                if abs(d_y) > settings.adjust_tolerance / math.sqrt(2):
+                if abs(d_y) > y_threshold:
                     if d_y < 0:
                         Teleport('up').main()
                     else:
@@ -107,27 +151,6 @@ class Adjust(Command):
                     counter -= 1
             error = utils.distance(config.player_pos, self.target)
             toggle = not toggle
-
-
-class Buff(Command):
-    """Uses each of Kanna's buffs once. Uses 'Haku Reborn' whenever it is available."""
-
-    def __init__(self):
-        super().__init__(locals())
-        self.haku_time = 0
-        self.buff_time = 0
-
-    def main(self):
-        buffs = [Key.SPEED_INFUSION, Key.HOLY_SYMBOL]
-        now = time.time()
-        if self.haku_time == 0 or now - self.haku_time > 490:
-            press(Key.HAKU, 2)
-            press(Key.AKATSUKI_WARRIOR, 2)
-            self.haku_time = now
-        if self.buff_time == 0 or now - self.buff_time > settings.buff_cooldown:
-            for key in buffs:
-                press(key, 3, up_time=0.3)
-            self.buff_time = now
 
 
 class Teleport(Command):
@@ -163,8 +186,44 @@ class Teleport(Command):
             config.layout.add(*config.player_pos)
 
 
-class Shikigami(Command):
-    """Attacks using 'Shikigami Haunting' in a given direction."""
+class RopeLift(Command):
+    """Uses Rope Lift once (e.g. for going up)."""
+
+    def main(self):
+        press(Key.ROPE_LIFT, 1)
+
+
+class Pickup(Command):
+    """Uses Pick Up once."""
+
+    def main(self):
+        press(Key.PICK_UP, 1)
+
+
+class Buff(Command):
+    """Uses decent skills (F1–F4) on 3 min rotation."""
+
+    def __init__(self):
+        super().__init__(locals())
+        self.decent_buff_time = 0
+
+    def main(self):
+        decent_buffs = [
+            Key.DECENT_SHARP_EYES,
+            Key.DECENT_HYPER_BODY,
+            Key.DECENT_COMBAT_ORDERS,
+            Key.DECENT_HOLY_SYMBOL,
+        ]
+        DECENT_CD = 180  # 3 min
+        now = time.time()
+        if self.decent_buff_time == 0 or now - self.decent_buff_time > DECENT_CD:
+            for key in decent_buffs:
+                press(key, 3, up_time=0.3)
+            self.decent_buff_time = now
+
+
+class SoulShatterTalisman(Command):
+    """Attacks using Soul-Shatter Talisman in a given direction (primary attack, no cd)."""
 
     def __init__(self, direction, attacks=2, repetitions=1):
         super().__init__(locals())
@@ -179,7 +238,7 @@ class Shikigami(Command):
         if config.stage_fright and utils.bernoulli(0.7):
             time.sleep(utils.rand_float(0.1, 0.3))
         for _ in range(self.repetitions):
-            press(Key.SHIKIGAMI, self.attacks, up_time=0.05)
+            press(Key.SOUL_SHATTER_TALISMAN, self.attacks, up_time=0.05)
         key_up(self.direction)
         if self.attacks > 2:
             time.sleep(0.3)
@@ -187,142 +246,162 @@ class Shikigami(Command):
             time.sleep(0.2)
 
 
-class Tengu(Command):
-    """Uses 'Tengu Strike' once."""
+class SpinningStrike(Command):
+    """Uses Spinning Strike once (12 sec cd)."""
 
     def main(self):
-        press(Key.TENGU, 1, up_time=0.05)
+        press(Key.SPINNING_STRIKE, 2, up_time=0.05)
 
 
-class LucidSoul(Command):
-    """
-    Places 'Lucid Soul Summon' in a given direction, or towards the center of the map if
-    no direction is specified.
-    """
-
-    def __init__(self, direction=None):
-        super().__init__(locals())
-        if direction is None:
-            self.direction = direction
-        else:
-            self.direction = settings.validate_horizontal_arrows(direction)
+class SummonTengu(Command):
+    """Uses Summon Tengu once (60 sec cd)."""
 
     def main(self):
-        if self.direction:
-            press(self.direction, 1, down_time=0.1, up_time=0.05)
-        else:
-            if config.player_pos[0] > 0.5:
-                press('left', 1, down_time=0.1, up_time=0.05)
-            else:
-                press('right', 1, down_time=0.1, up_time=0.05)
-        press(Key.LUCID_SOUL, 3)
+        press(Key.SUMMON_TENGU, 2, up_time=0.05)
 
 
-class Yaksha(Command):
-    """
-    Places 'Ghost Yaksha Boss' in a given direction, or towards the center of the map if
-    no direction is specified.
-    """
-
-    def __init__(self, direction=None):
-        super().__init__(locals())
-        if direction is None:
-            self.direction = direction
-        else:
-            self.direction = settings.validate_horizontal_arrows(direction)
+class SummonOni(Command):
+    """Uses Summon Oni once (60 sec cd)."""
 
     def main(self):
-        if self.direction:
-            press(self.direction, 1, down_time=0.1, up_time=0.05)
-        else:
-            if config.player_pos[0] > 0.5:
-                press('left', 1, down_time=0.1, up_time=0.05)
-            else:
-                press('right', 1, down_time=0.1, up_time=0.05)
-        press(Key.YAKSHA, 3)
+        press(Key.SUMMON_ONI, 2, up_time=0.05)
 
 
-class Vanquisher(Command):
-    """Holds down 'Vanquisher's Charm' until this command is called again."""
+class SummonOrochi(Command):
+    """Uses Summon Orochi once (120 sec cd)."""
 
     def main(self):
-        key_up(Key.VANQUISHER)
-        time.sleep(0.075)
-        key_down(Key.VANQUISHER)
-        time.sleep(0.15)
+        press(Key.SUMMON_OROCHI, 3)
 
 
-class Kishin(Command):
-    """Uses 'Kishin Shoukan' once."""
+class UnleashRadiantFlame(Command):
+    """Uses Unleash Radiant Flame once (120 sec cd)."""
 
     def main(self):
-        press(Key.KISHIN, 4, down_time=0.1, up_time=0.15)
+        press(Key.UNLEASH_RADIANT_FLAME, 3)
 
 
-class NineTails(Command):
-    """Uses 'Nine-Tailed Fury' once."""
-
-    def main(self):
-        press(Key.NINE_TAILS, 3)
-
-
-class Arachnid(Command):
-    """Uses 'True Arachnid Reflection' once."""
+class BarrierCurseWard(Command):
+    """Uses Barrier Curse Ward once (60 sec cd)."""
 
     def main(self):
-        press(Key.ARACHNID, 3)
+        press(Key.BARRIER_CURSE_WARD, 2)
 
 
-class Exorcist(Command):
-    """Uses 'Exorcist's Charm' once."""
-
-    def __init__(self, jump='False'):
-        super().__init__(locals())
-        self.jump = settings.validate_boolean(jump)
+class PulverizingStrike(Command):
+    """Uses Pulverizing Strike once (30 sec cd)."""
 
     def main(self):
-        if self.jump:
-            press(Key.JUMP, 1, down_time=0.1, up_time=0.15)
-        press(Key.EXORCIST, 2, up_time=0.05)
+        press(Key.PULVERIZING_STRIKE, 2, up_time=0.05)
 
 
-class Domain(Command):
-    """Uses 'Spirit's Domain' once."""
+class Execute(Command):
+    """Uses Execute once (30 sec cd)."""
 
     def main(self):
-        press(Key.DOMAIN, 3)
+        press(Key.EXECUTE, 2, up_time=0.05)
 
 
-class Legion(Command):
-    """Uses 'Ghost Yaksha: Great Oni Lord's Legion' once."""
-
-    def main(self):
-        press(Key.ONI_LEGION, 2, down_time=0.1)
-
-
-class BlossomBarrier(Command):
-    """Places a 'Blossom Barrier' on the ground once."""
+class ShadeFletchedArrow(Command):
+    """Uses Shade Fletched Arrow once (30 sec cd)."""
 
     def main(self):
-        press(Key.BLOSSOM_BARRIER, 2)
+        press(Key.SHADE_FLETCHED_ARROW, 2, up_time=0.05)
 
 
-class Yukimusume(Command):
-    """Uses 'Yuki-musume Shoukan' once."""
-
-    def main(self):
-        press(Key.YUKIMUSUME, 2)
-
-
-class Balance(Command):
-    """Restores mana using 'Mana Balance' once."""
+class HeartWreckTalisman(Command):
+    """Uses Heart Wreck Talisman once (30 sec cd)."""
 
     def main(self):
-        press(Key.MANA_BALANCE, 2)
+        press(Key.HEART_WRECK_TALISMAN, 2, up_time=0.05)
 
 
-class Charm(Command):
-    """Jumps up using 'Shikigami Charm'."""
+class UnleashBlackWingedDestruction(Command):
+    """Uses Unleash Black Winged Destruction once (120 sec cd)."""
 
     def main(self):
-        press(Key.CHARM, 2)
+        press(Key.UNLEASH_BLACK_WINGED_DESTRUCTION, 3)
+
+
+class UnleashSoulSearingVenom(Command):
+    """Uses Unleash Soul-Searing Venom once (120 sec cd)."""
+
+    def main(self):
+        press(Key.UNLEASH_SOUL_SEARING_VENOM, 3)
+
+
+class TwilightBloom(Command):
+    """Uses Twilight Bloom once (120 sec cd)."""
+
+    def main(self):
+        press(Key.TWILIGHT_BLOOM, 3)
+
+
+class PrincessSakunoBlessing(Command):
+    """Uses Princess Sakuno's Blessing once (120 sec cd)."""
+
+    def main(self):
+        press(Key.PRINCESS_SAKUNO_BLESSING, 3)
+
+
+class HakumenkonmouJuubi(Command):
+    """Uses Hakumenkonmou Juubi once (120 sec cd)."""
+
+    def main(self):
+        press(Key.HAKUMENKONMOU_JUUBI, 3)
+
+
+class ErdaShower(Command):
+    """Uses Erda Shower once (60 sec cd, shared)."""
+
+    def main(self):
+        press(Key.ERDA_SHOWER, 3)
+
+
+class TrueArachnidReflection(Command):
+    """Uses True Arachnid Reflection once (250 sec cd, shared)."""
+
+    def main(self):
+        press(Key.TRUE_ARACHNID_REFLECTION, 3)
+
+
+class CallOfUnit(Command):
+    """Uses Call of Unit once (60 sec cd)."""
+
+    def main(self):
+        press(Key.CALL_OF_UNIT, 2)
+
+
+class SpiritChains(Command):
+    """Uses Spirit Chains once (120 sec cd)."""
+
+    def main(self):
+        press(Key.SPIRIT_CHAINS, 3)
+
+
+class TrueNameRevolution(Command):
+    """Uses True Name Revolution once (120 sec cd)."""
+
+    def main(self):
+        press(Key.TRUE_NAME_REVOLUTION, 3)
+
+
+class AkatsukiBlessing(Command):
+    """Uses Akatsuki Blessing once (120 sec cd)."""
+
+    def main(self):
+        press(Key.AKATSUKI_BLESSING, 3)
+
+
+class Origin(Command):
+    """Uses Origin (6th job skill) once."""
+
+    def main(self):
+        press(Key.ORIGIN, 3)
+
+
+class Ascent(Command):
+    """Uses Ascent (6th job skill) once."""
+
+    def main(self):
+        press(Key.ASCENT, 3)

@@ -1,4 +1,4 @@
-"""A collection of all commands that Shadower can use to interact with the game. 	"""
+"""A collection of all commands that Shadower can use to interact with the game."""
 
 from src.common import config, settings, utils
 import time
@@ -6,35 +6,49 @@ import math
 from src.routine.components import Command
 from src.common.vkeys import press, key_down, key_up
 
+# Cooldowns for SkillRotation (key -> sec; meso explosion fake 10s so it's not spammed)
+SKILL_COOLDOWNS = {
+    'ctrl': 0,    # Cruel Stab (primary)
+    'shift': 10,  # Meso Explosion (fake 10s - costs mesos)
+    'q': 60,      # Dark Flare
+    'w': 30,      # Sudden Raid
+    'e': 120,     # Smokescreen
+    'r': 60,      # Shadow Veil
+}
+
 
 # List of key mappings
 class Key:
-    # Movement
-    JUMP = 'space' 
-    FLASH_JUMP = 'space' 
-    SHADOW_ASSAULT = 't' 
+    # Movement (flash jump = same key as jump, 2 presses double / 3 triple)
+    JUMP = 'space'
+    ROPE_LIFT = 'c'
+    PICK_UP = 'z'
+    SHADOW_ASSAULT = 't'
 
-    # Buffs
-    SHADOW_PARTNER = '1' 
-    MAPLE_WARRIOR = '2' 
-    EPIC_ADVENTURE = '3'
-    SPEED_INFUSION = '8'
-    HOLY_SYMBOL = '4'
-    SHARP_EYE = '5'
-    COMBAT_ORDERS = '6'
-    ADVANCED_BLESSING = '7'
+    # Decent skills (F1–F4), 3 min rotation
+    DECENT_SHARP_EYES = 'f1'
+    DECENT_HYPER_BODY = 'f2'
+    DECENT_COMBAT_ORDERS = 'f3'
+    DECENT_HOLY_SYMBOL = 'f4'
 
-    # Skills
-    CRUEL_STAB = 'q' 
-    MESO_EXPLOSION = 'w' 
-    SUDDEN_RAID = 'e'
-    DARK_FLARE = 's' 
-    SHADOW_VEIL = 'a' 
-    ARACHNID = 'f4' 
-    ERDA_SHOWER = 'f5' 
-    TRICKBLADE = 'd'
-    SLASH_SHADOW_FORMATION = 'v'
-    SONIC_BLOW = 'b'
+    # Shadow Partner buff (reapply every 180 sec)
+    SHADOW_PARTNER = '1'
+
+    # Shared skills (all classes)
+    ERDA_SHOWER = '4'        # 60 sec
+    TRUE_ARACHNID_REFLECTION = '5'   # 250 sec
+
+    # 6th job skills
+    ORIGIN = '7'
+    ASCENT = '8'
+
+    # Shadower-specific skills
+    CRUEL_STAB = 'ctrl'      # Primary attack
+    MESO_EXPLOSION = 'shift' # Fake 10s cd in rotation (costs mesos)
+    DARK_FLARE = 'q'         # 60 sec
+    SUDDEN_RAID = 'w'        # 30 sec
+    SMOKESCREEN = 'e'        # 120 sec
+    SHADOW_VEIL = 'r'        # 60 sec
 
 
 #########################
@@ -43,12 +57,14 @@ class Key:
 def step(direction, target):
     """
     Performs one movement step in the given DIRECTION towards TARGET.
-    Should not press any arrow keys, as those are handled by Auto Maple.
+    When direction is up, presses Rope Lift once. Optional vertical jump, then 2 presses of
+    JUMP for left/right, 1 for up/down (flash jump = double/triple jump).
     """
-
     num_presses = 2
     if direction == 'up' or direction == 'down':
         num_presses = 1
+    if direction == 'up':
+        press(Key.ROPE_LIFT, 1)
     if config.stage_fright and direction != 'up' and utils.bernoulli(0.75):
         time.sleep(utils.rand_float(0.1, 0.3))
     d_y = target[1] - config.player_pos[1]
@@ -57,7 +73,7 @@ def step(direction, target):
             press(Key.JUMP, 3)
         elif direction == 'up':
             press(Key.JUMP, 1)
-    press(Key.FLASH_JUMP, num_presses)
+    press(Key.JUMP, num_presses)
 
 
 class Adjust(Command):
@@ -110,42 +126,35 @@ class Adjust(Command):
 
 
 class Buff(Command):
-    """Uses each of Shadowers's buffs once."""
+    """Decent skills (3 min) and Shadow Partner every 180 sec."""
 
     def __init__(self):
         super().__init__(locals())
-        self.cd120_buff_time = 0
-        self.cd180_buff_time = 0
-        self.cd200_buff_time = 0
-        self.cd240_buff_time = 0
-        self.cd900_buff_time = 0
         self.decent_buff_time = 0
+        self.shadow_partner_time = 0
 
     def main(self):
-        buffs = [Key.SPEED_INFUSION, Key.HOLY_SYMBOL, Key.SHARP_EYE, Key.COMBAT_ORDERS, Key.ADVANCED_BLESSING]
+        decent_buffs = [
+            Key.DECENT_SHARP_EYES,
+            Key.DECENT_HYPER_BODY,
+            Key.DECENT_COMBAT_ORDERS,
+            Key.DECENT_HOLY_SYMBOL,
+        ]
+        DECENT_CD = 180  # 3 min
+        SHADOW_PARTNER_CD = 180  # 3 min
         now = time.time()
 
-        if self.cd120_buff_time == 0 or now - self.cd120_buff_time > 120:
-	        press(Key.EPIC_ADVENTURE, 2)
-	        self.cd120_buff_time = now
-        if self.cd180_buff_time == 0 or now - self.cd180_buff_time > 180:
-	        self.cd180_buff_time = now
-        if self.cd200_buff_time == 0 or now - self.cd200_buff_time > 200:
-	        press(Key.SHADOW_PARTNER, 2)
-	        self.cd200_buff_time = now
-        if self.cd240_buff_time == 0 or now - self.cd240_buff_time > 240:
-	        self.cd240_buff_time = now
-        if self.cd900_buff_time == 0 or now - self.cd900_buff_time > 900:
-	        press(Key.MAPLE_WARRIOR, 2)
-	        self.cd900_buff_time = now
-        if self.decent_buff_time == 0 or now - self.decent_buff_time > settings.buff_cooldown:
-	        for key in buffs:
-		        press(key, 3, up_time=0.3)
-	        self.decent_buff_time = now		
+        if self.decent_buff_time == 0 or now - self.decent_buff_time > DECENT_CD:
+            for key in decent_buffs:
+                press(key, 3, up_time=0.3)
+            self.decent_buff_time = now
+        if self.shadow_partner_time == 0 or now - self.shadow_partner_time > SHADOW_PARTNER_CD:
+            press(Key.SHADOW_PARTNER, 2)
+            self.shadow_partner_time = now
 
 			
 class FlashJump(Command):
-    """Performs a flash jump in the given direction."""
+    """Performs a flash jump in the given direction (JUMP key, 2 presses)."""
 
     def __init__(self, direction):
         super().__init__(locals())
@@ -154,11 +163,7 @@ class FlashJump(Command):
     def main(self):
         key_down(self.direction)
         time.sleep(0.1)
-        press(Key.FLASH_JUMP, 1)
-        if self.direction == 'up':
-            press(Key.FLASH_JUMP, 1)
-        else:
-            press(Key.FLASH_JUMP, 1)
+        press(Key.JUMP, 2)
         key_up(self.direction)
         time.sleep(0.5)
 			
@@ -220,7 +225,7 @@ class CruelStab(Command):
 
 
 class MesoExplosion(Command):
-    """Uses 'MesoExplosion' once."""
+    """Uses Meso Explosion once (fake 10s cd in SkillRotation so it's not spammed; costs mesos)."""
 
     def main(self):
         press(Key.MESO_EXPLOSION, 1, up_time=0.05)
@@ -233,7 +238,7 @@ class CruelStabRandomDirection(Command):
         
 class DarkFlare(Command):
     """
-    Uses 'DarkFlare' in a given direction, or towards the center of the map if
+    Uses Dark Flare (60 sec cd) in a given direction, or towards the center of the map if
     no direction is specified.
     """
 
@@ -253,29 +258,6 @@ class DarkFlare(Command):
             else:
                 press('right', 1, down_time=0.1, up_time=0.05)
         press(Key.DARK_FLARE, 3)
-
-class ShadowVeil(Command):
-    """
-    Uses 'ShadowVeil' in a given direction, or towards the center of the map if
-    no direction is specified.
-    """
-
-    def __init__(self, direction=None):
-        super().__init__(locals())
-        if direction is None:
-            self.direction = direction
-        else:
-            self.direction = settings.validate_horizontal_arrows(direction)
-
-    def main(self):
-        if self.direction:
-            press(self.direction, 1, down_time=0.1, up_time=0.05)
-        else:
-            if config.player_pos[0] > 0.5:
-                press('left', 1, down_time=0.1, up_time=0.05)
-            else:
-                press('right', 1, down_time=0.1, up_time=0.05)
-        press(Key.SHADOW_VEIL, 3)        		
 
 class ErdaShower(Command):
     """
@@ -311,21 +293,22 @@ class ErdaShower(Command):
 
 
 class SuddenRaid(Command):
-    """Uses 'SuddenRaid' once."""
+    """Uses Sudden Raid once (30 sec cd)."""
 
     def main(self):
         press(Key.SUDDEN_RAID, 3)
 
 
-class Arachnid(Command):
-    """Uses 'True Arachnid Reflection' once."""
+class Smokescreen(Command):
+    """Uses Smokescreen once (120 sec cd)."""
 
     def main(self):
-        press(Key.ARACHNID, 3)
+        press(Key.SMOKESCREEN, 3)
 
-class TrickBlade(Command):
+
+class ShadowVeil(Command):
     """
-    Uses 'TrickBlade' in a given direction, or towards the center of the map if
+    Uses Shadow Veil (60 sec cd) in a given direction, or towards the center of the map if
     no direction is specified.
     """
 
@@ -344,16 +327,24 @@ class TrickBlade(Command):
                 press('left', 1, down_time=0.1, up_time=0.05)
             else:
                 press('right', 1, down_time=0.1, up_time=0.05)
-        press(Key.TRICKBLADE, 3)
+        press(Key.SHADOW_VEIL, 3)
 
-class SlashShadowFormation(Command):
-    """Uses 'SlashShadowFormation' once."""
 
-    def main(self):
-        press(Key.SLASH_SHADOW_FORMATION, 3)
-		
-class SonicBlow(Command):
-    """Uses 'SonicBlow' once."""
+class Arachnid(Command):
+    """Uses True Arachnid Reflection once (250 sec cd)."""
 
     def main(self):
-        press(Key.SONIC_BLOW, 3)
+        press(Key.TRUE_ARACHNID_REFLECTION, 3)
+
+class Origin(Command):
+    """Uses Origin (6th job skill) once."""
+
+    def main(self):
+        press(Key.ORIGIN, 3)
+
+
+class Ascent(Command):
+    """Uses Ascent (6th job skill) once."""
+
+    def main(self):
+        press(Key.ASCENT, 3)
