@@ -102,6 +102,8 @@ def step(direction, target):
     if abs(d_y) > settings.move_tolerance * 1.5 and direction == 'down':
         press(Key.JUMP, 3)
     press(Key.TELEPORT, num_presses)
+    time.sleep(0.05)
+    press(Key.JUMP, 1)  # jump off ladder into direction
 
 
 class Adjust(Command):
@@ -184,6 +186,8 @@ class Teleport(Command):
             else:
                 press(Key.JUMP, 1)
         press(Key.TELEPORT, num_presses)
+        time.sleep(0.05)
+        press(Key.JUMP, 1)  # jump off ladder into direction
         key_up(self.direction)
         if settings.record_layout:
             config.layout.add(*config.player_pos)
